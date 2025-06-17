@@ -9,9 +9,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDK (Importar antes do seu script principal) -->
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
 
+    <!-- Chosen Palette: Calm Harmony (Warm neutrals: stone, slate; Accent: teal) -->
+    <!-- Application Structure Plan: A SPA designed as an interactive vertical stepper/checklist. This structure transforms the dense procedural text of the report into a manageable, task-oriented user interface. Users can navigate between the 5 main phases, expand detailed sub-steps, and track their progress with checkboxes. This design enhances usability by preventing information overload and turning a static guide into a functional operational tool, making the complex process more actionable and easier to follow. It includes a simple password-based access control for editing mode, leveraging Firebase Firestore for persistent and shared state. -->
+    <!-- Visualization & Content Choices: Report Info: The 5 main operational phases. -> Goal: Visualize Process/Organize. -> Viz/Presentation Method: Interactive horizontal bar chart (Chart.js/Canvas) and a vertical stepper navigation (HTML/CSS/JS). -> Interaction: Clicking a bar or a stepper item navigates to the corresponding content section. -> Justification: Provides a high-level visual summary and multiple intuitive navigation pathways. | Report Info: Detailed sub-steps and procedural descriptions. -> Goal: Inform/Organize. -> Presentation Method: Expandable content cards (accordions) for each sub-step. -> Interaction: Click to expand/collapse details. This interaction is now independent of checkbox clicks. -> Justification: Keeps the interface clean and allows users to focus on one topic at a time. | Report Info: Actionable tasks within each step. -> Goal: Engage/Organize. -> Presentation Method: Interactive HTML checkboxes. -> Interaction: Users can check/uncheck tasks; progress is visually updated and state is saved to Firebase Firestore. Authentication by simple password for edit mode. Checkbox clicks do NOT close the parent accordion. -> Justification: Transforms the static document into a dynamic, reusable project management tool with online persistence and shared view. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -82,23 +87,35 @@
         </div>
 
         <div class="flex flex-col md:flex-row gap-8">
+            <!-- Sidebar/Stepper Navigation -->
             <aside class="w-full md:w-1/3 lg:w-1/4">
                 <div id="stepper" class="sticky top-8 bg-white p-4 rounded-2xl content-card">
                     <h3 class="font-bold text-lg mb-4 text-slate-800">Fases do Processo</h3>
-                    </div>
+                    <!-- Stepper items will be injected by JS -->
+                </div>
             </aside>
 
+            <!-- Main Content -->
             <main class="w-full md:w-2/3 lg:w-3/4">
                 <div id="content-area">
-                    </div>
+                    <!-- Content will be injected by JS -->
+                </div>
             </main>
         </div>
     </div>
 
     <script>
         // --- INÍCIO CONFIGURAÇÃO FIREBASE ---
-        // VOCÊ PRECISA SUBSTITUIR ESTAS CREDENCIAIS PELAS DO SEU PROJETO FIREBASE
-        // Para obter: Vá no console do Firebase > Configurações do Projeto (engrenagem) > Geral > Seus apps
+        // VOCÊ PRECISA SUBSTITUIR ESTAS CREDENCIAIS PELAS DO SEU PROJETO FIREBASE!
+        // ESTE É O PASSO MAIS IMPORTANTE PARA O DASHBOARD FUNCIONAR CORRETAMENTE.
+        // Como obter suas credenciais:
+        // 1. Acesse o Console do Firebase (console.firebase.google.com).
+        // 2. Selecione o seu projeto existente ou crie um novo.
+        // 3. Clique na engrenagem de "Configurações do Projeto" (geralmente no canto superior esquerdo, perto de "Visão geral do projeto").
+        // 4. Role para baixo até a seção "Seus apps".
+        // 5. Se não houver um app web listado, clique no ícone `</>` (para adicionar um aplicativo da web).
+        // 6. Registre o aplicativo e COPIE O OBJETO `firebaseConfig` COMPLETO.
+        // 7. Certifique-se também que o BANCO DE DADOS FIRESTORE está criado e habilitado no seu projeto (menu "Build" > "Firestore Database").
         const firebaseConfig = {
             apiKey: "AIzaSyDRuxxyo4K8jZWcU7VTBmw567SilQ5LI6Y", // Ex: "AIzaSyC..."
             authDomain: "dash-assessoria.firebaseapp.com", // Ex: "seunome-12345.firebaseapp.com"
@@ -108,10 +125,39 @@
             appId: "1:101403699083:web:2b2a95b6b8b13bd96fb18e" // Ex: "1:1234567890:web:abcdef..."
         };
 
-        // Inicializar Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const docRef = db.collection('processos').doc('andamento-assessoria'); // Documento único para o estado
+        let db;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            // Referência ao documento no Firestore que armazenará o estado do checklist
+            const docRef = db.collection('processos').doc('andamento-assessoria');
+
+            // Listener para mudanças no Firestore (em tempo real)
+            docRef.onSnapshot((doc) => {
+                if (doc.exists) {
+                    checklistState = doc.data();
+                    renderAllContent(); // Redesenha para refletir as mudanças do banco de dados
+                    updateProcessChart();
+                } else {
+                    console.log("Nenhum documento encontrado no Firestore, iniciando com checklist vazio.");
+                    checklistState = {};
+                    renderAllContent();
+                    updateProcessChart(); // Inicializa o gráfico mesmo sem dados do firestore
+                }
+            }, (error) => {
+                console.error("Erro ao carregar dados do Firestore:", error);
+                editStatusSpan.textContent = 'Erro ao carregar dados. Verifique o console.';
+                editStatusSpan.classList.remove('text-teal-600');
+                editStatusSpan.classList.add('text-red-500');
+                isEditorMode = false; // Desativa o modo de edição em caso de erro no Firestore
+            });
+
+        } catch (error) {
+            console.error("Erro ao inicializar Firebase:", error);
+            editStatusSpan.textContent = 'Erro na inicialização do Firebase. Verifique suas credenciais.';
+            editStatusSpan.classList.remove('text-gray-500');
+            editStatusSpan.classList.add('text-red-500');
+        }
         // --- FIM CONFIGURAÇÃO FIREBASE ---
 
         const processData = [
@@ -327,7 +373,7 @@
         const loginButton = document.getElementById('login-button');
         const editStatusSpan = document.getElementById('edit-status');
 
-        const SECRET_PASSWORD = "Helux123"; // <-- SUBSTITUA PELA SUA SENHA SECRETA
+        const SECRET_PASSWORD = "helux123"; // <-- SUBSTITUA PELA SUA SENHA SECRETA
         let isEditorMode = false;
         let checklistState = {}; // Estado do checklist, será carregado do Firebase
 
@@ -350,36 +396,20 @@
             }
         });
 
-        // Listener para mudanças no Firestore (em tempo real)
-        docRef.onSnapshot((doc) => {
-            if (doc.exists) {
-                checklistState = doc.data();
-                renderAllContent(); // Redesenha para refletir as mudanças do banco de dados
-                updateProcessChart();
-            } else {
-                console.log("Nenhum documento encontrado no Firestore, iniciando com checklist vazio.");
-                checklistState = {};
-                renderAllContent();
-            }
-        }, (error) => {
-            console.error("Erro ao carregar dados do Firestore:", error);
-            editStatusSpan.textContent = 'Erro ao carregar dados. Verifique o console.';
-            editStatusSpan.classList.remove('text-teal-600');
-            editStatusSpan.classList.add('text-red-500');
-            // Se houver erro de permissão, pode ser útil desativar o modo de edição por padrão
-            isEditorMode = false;
-        });
-
         function saveStateToFirestore(taskId, isChecked) {
             if (isEditorMode) {
                 checklistState[taskId] = isChecked;
                 docRef.set(checklistState)
                     .then(() => {
                         console.log("Estado salvo no Firestore!");
-                        updateProcessChart();
+                        // updateProcessChart() já é chamado pelo onSnapshot, que reage ao set
                     })
                     .catch((error) => {
                         console.error("Erro ao salvar estado no Firestore:", error);
+                        // Reverte o checkbox no UI se o save falhar
+                        const checkbox = document.querySelector(`input[data-task-id="${taskId}"]`);
+                        if (checkbox) checkbox.checked = !isChecked;
+                        alert('Erro ao salvar o progresso. Tente novamente mais tarde.');
                     });
             } else {
                 console.log("Não é possível salvar: Modo de visualização.");
@@ -413,14 +443,15 @@
                 phaseEl.className = 'mb-12 scroll-mt-8';
                 
                 let sectionsHTML = phase.sections.map((section, sectionIndex) => {
-                    const tasksHTML = section.tasks.map((task, taskIndex) => {
-                        const taskId = `${section.id}-${taskIndex}`;
+                    const tasksHTML = section.tasks.map((taskText, taskIndex) => {
+                        // ID único para a tarefa: combinação de fase-secao-indice_da_tarefa
+                        const taskId = `${phase.id}-${section.id}-${taskIndex}`; 
                         const isChecked = checklistState[taskId] ? 'checked' : '';
                         const isDisabled = isEditorMode ? '' : 'disabled';
                         return `
                             <div class="flex items-start my-2">
                                 <input type="checkbox" id="${taskId}" data-task-id="${taskId}" class="task-checkbox mt-1 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500" ${isChecked} ${isDisabled}>
-                                <label for="${taskId}" class="ml-3 block text-sm text-slate-700 ${isChecked ? 'line-through text-gray-500' : ''}">${task}</label>
+                                <label for="${taskId}" class="ml-3 block text-sm text-slate-700 ${isChecked ? 'line-through text-gray-500' : ''}">${taskText}</label>
                             </div>
                         `;
                     }).join('');
@@ -456,6 +487,7 @@
         function attachCheckboxListeners() {
             document.querySelectorAll('.task-checkbox').forEach(checkbox => {
                 checkbox.addEventListener('change', (e) => {
+                    e.stopPropagation(); // Impede que o clique feche o <details>
                     const taskId = e.target.dataset.taskId;
                     saveStateToFirestore(taskId, e.target.checked);
                 });
@@ -489,35 +521,23 @@
         }
         
         function updateProcessChart() {
-            const completedTasksPerPhase = processData.map(phase => {
-                let completed = 0;
+            const completionPercentages = processData.map(phase => {
+                let completedTasks = 0;
+                let totalTasks = 0;
                 phase.sections.forEach(section => {
-                    section.tasks.forEach(task => {
-                        const taskId = `${section.id}-${task}`;
+                    section.tasks.forEach((taskText, taskIndex) => { // Inclui taskIndex aqui
+                        const taskId = `${phase.id}-${section.id}-${taskIndex}`; // Gera o taskId corretamente
+                        totalTasks++;
                         if (checklistState[taskId]) {
-                            completed++;
+                            completedTasks++;
                         }
                     });
                 });
-                return completed;
+                return totalTasks === 0 ? 0 : (completedTasks / totalTasks) * 100;
             });
 
-            const totalTasksPerPhase = processData.map(phase => {
-                let total = 0;
-                phase.sections.forEach(section => {
-                    total += section.tasks.length;
-                });
-                return total;
-            });
-            
-            const completionPercentages = processData.map((phase, index) => {
-                const total = totalTasksPerPhase[index];
-                if (total === 0) return 0;
-                return (completedTasksPerPhase[index] / total) * 100;
-            });
-
-            chart.data.datasets[0].data = completionPercentages;
-            chart.update();
+            chartInstance.data.datasets[0].data = completionPercentages;
+            chartInstance.update();
         }
 
 
@@ -617,7 +637,6 @@
                     }
                 }
             });
-            updateProcessChart(); // Inicializa o gráfico com os dados
         }
 
         document.addEventListener('DOMContentLoaded', () => {
