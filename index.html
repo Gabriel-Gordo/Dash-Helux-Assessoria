@@ -126,30 +126,45 @@
         };
 
         let db;
+        let docRef; 
+        
         try {
             firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            // Referência ao documento no Firestore que armazenará o estado do checklist
-            const docRef = db.collection('processos').doc('andamento-assessoria');
+            db = firebase.firestore(); // Atribui db no escopo global
+            docRef = db.collection('processos').doc('andamento-assessoria'); // Atribui docRef no escopo global
 
             // Listener para mudanças no Firestore (em tempo real)
             docRef.onSnapshot((doc) => {
                 if (doc.exists) {
                     checklistState = doc.data();
-                    renderAllContent(); // Redesenha para refletir as mudanças do banco de dados
+                    console.log("Dados carregados do Firestore:", checklistState);
+                    renderAllContent(); 
                     updateProcessChart();
                 } else {
-                    console.log("Nenhum documento encontrado no Firestore, iniciando com checklist vazio.");
-                    checklistState = {};
+                    console.log("Documento não encontrado no Firestore. Criando documento inicial.");
+                    let initialChecklistState = {};
+                    processData.forEach(phase => {
+                        phase.sections.forEach(section => {
+                            section.tasks.forEach((taskText, taskIndex) => {
+                                const taskId = `${phase.id}-${section.id}-${taskIndex}`;
+                                initialChecklistState[taskId] = false;
+                            });
+                        });
+                    });
+                    docRef.set(initialChecklistState)
+                        .then(() => console.log("Documento inicial criado no Firestore."))
+                        .catch(error => console.error("Erro ao criar documento inicial:", error));
+                    
+                    checklistState = initialChecklistState;
                     renderAllContent();
-                    updateProcessChart(); // Inicializa o gráfico mesmo sem dados do firestore
+                    updateProcessChart();
                 }
             }, (error) => {
                 console.error("Erro ao carregar dados do Firestore:", error);
                 editStatusSpan.textContent = 'Erro ao carregar dados. Verifique o console.';
                 editStatusSpan.classList.remove('text-teal-600');
                 editStatusSpan.classList.add('text-red-500');
-                isEditorMode = false; // Desativa o modo de edição em caso de erro no Firestore
+                isEditorMode = false;
             });
 
         } catch (error) {
