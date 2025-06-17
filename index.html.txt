@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Processos | Assessoria de Marketplace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .content-card {
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .step-item.active {
+            background-color: #14b8a6; /* Teal-500 */
+            color: white;
+            border-left-color: #0d9488; /* Teal-600 */
+        }
+        .step-item {
+            border-left-width: 4px;
+            border-color: transparent;
+        }
+        .step-item.active .step-circle {
+            background-color: white;
+            color: #14b8a6; /* Teal-500 */
+        }
+        .chart-container {
+            position: relative;
+            margin: auto;
+            height: 250px;
+            width: 100%;
+            max-width: 900px;
+        }
+        .task-checkbox:checked + label {
+            text-decoration: line-through;
+            color: #64748b;
+        }
+        /* Scrollbar styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Guia Interativo de Assessoria para Marketplaces</h1>
+            <p class="text-slate-600 mt-2">Um painel para gerenciar o processo de ponta a ponta.</p>
+            <div id="auth-section" class="mt-4">
+                <input type="password" id="editor-password" placeholder="Senha para editar" class="p-2 border rounded-md text-sm">
+                <button id="login-button" class="ml-2 px-4 py-2 bg-teal-600 text-white rounded-md text-sm hover:bg-teal-700">Entrar</button>
+                <span id="edit-status" class="ml-4 text-sm font-semibold text-gray-500">Modo: Visualização</span>
+            </div>
+        </header>
+
+        <div class="mb-12 content-card bg-white p-6 rounded-2xl">
+            <h2 class="text-xl font-bold text-slate-800 mb-4 text-center">Progresso Geral do Processo</h2>
+             <div class="chart-container">
+                <canvas id="processChart"></canvas>
+            </div>
+        </div>
+
+        <div class="flex flex-col md:flex-row gap-8">
+            <aside class="w-full md:w-1/3 lg:w-1/4">
+                <div id="stepper" class="sticky top-8 bg-white p-4 rounded-2xl content-card">
+                    <h3 class="font-bold text-lg mb-4 text-slate-800">Fases do Processo</h3>
+                    </div>
+            </aside>
+
+            <main class="w-full md:w-2/3 lg:w-3/4">
+                <div id="content-area">
+                    </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // --- INÍCIO CONFIGURAÇÃO FIREBASE ---
+        // VOCÊ PRECISA SUBSTITUIR ESTAS CREDENCIAIS PELAS DO SEU PROJETO FIREBASE
+        // Para obter: Vá no console do Firebase > Configurações do Projeto (engrenagem) > Geral > Seus apps
+        const firebaseConfig = {
+            apiKey: "AIzaSyDRuxxyo4K8jZWcU7VTBmw567SilQ5LI6Y", // Ex: "AIzaSyC..."
+            authDomain: "dash-assessoria.firebaseapp.com", // Ex: "seunome-12345.firebaseapp.com"
+            projectId: "dash-assessoria", // Ex: "seunome-12345"
+            storageBucket: "dash-assessoria.firebasestorage.app", // Ex: "seunome-12345.appspot.com"
+            messagingSenderId: "101403699083", // Ex: "1234567890"
+            appId: "1:101403699083:web:2b2a95b6b8b13bd96fb18e" // Ex: "1:1234567890:web:abcdef..."
+        };
+
+        // Inicializar Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const docRef = db.collection('processos').doc('andamento-assessoria'); // Documento único para o estado
+        // --- FIM CONFIGURAÇÃO FIREBASE ---
+
+        const processData = [
+            {
+                id: 'planejamento',
+                title: 'I. Planejamento e Estruturação',
+                intro: 'Esta etapa é crucial para alinhar expectativas e estabelecer a base do relacionamento com o cliente. Um bom planejamento evita retrabalho e garante que todos os envolvidos estejam na mesma página desde o início.',
+                sections: [
+                    {
+                        id: 's1-1',
+                        title: '1. Definição do Escopo da Assessoria',
+                        objective: 'Entender as necessidades do cliente e definir quais serviços serão prestados.',
+                        tasks: [
+                            'Realizar diagnóstico inicial (produtos, público, objetivos, estrutura).',
+                            'Elaborar proposta de serviços (criação de contas, ERP, gestão de produtos, ADS, etc.).',
+                            'Estabelecer cronograma e entregáveis para cada etapa do processo.'
+                        ]
+                    },
+                    {
+                        id: 's1-2',
+                        title: '2. Acordo e Contrato com o Cliente',
+                        objective: 'Formalizar a parceria, protegendo ambas as partes.',
+                        tasks: [
+                            'Elaborar contrato detalhado (escopo, prazos, valores, confidencialidade, rescisão).',
+                            'Garantir que o contrato seja lido e assinado por todas as partes envolvidas.'
+                        ]
+                    },
+                    {
+                        id: 's1-3',
+                        title: '3. Levantamento de Informações e Acessos',
+                        objective: 'Coletar todos os dados e credenciais necessários para iniciar as operações.',
+                        tasks: [
+                            'Coletar dados da empresa (CNPJ, Razão Social, endereço, etc.).',
+                            'Obter credenciais de login de marketplaces existentes e outros sistemas.',
+                            'Solicitar acesso aos certificados digitais (A1/A3).',
+                            'Receber listagem completa de produtos (planilha com SKU, NCM, EAN, preços, etc.).'
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'configuracao-erp',
+                title: 'II. Configuração do ERP Bling',
+                intro: 'O Bling será o coração da operação, centralizando cadastros, pedidos, estoque e faturamento. Uma configuração correta aqui é vital para a automação e eficiência de todo o fluxo de trabalho.',
+                sections: [
+                    {
+                        id: 's2-1',
+                        title: '1. Criação e Configuração da Conta Bling',
+                        objective: 'Configurar o Bling de acordo com as necessidades fiscais e operacionais do cliente.',
+                        tasks: [
+                            'Criar ou acessar a conta do cliente no Bling.',
+                            'Preencher dados cadastrais da empresa.',
+                            'Configurar Naturezas de Operação (com apoio de um contador).',
+                            'Configurar Formas de Pagamento.',
+                            'Verificar e configurar impostos (NCM, CST, CEST).',
+                            'Criar usuários e definir permissões de acesso.',
+                            'Configurar depósitos de estoque.'
+                        ]
+                    },
+                    {
+                        id: 's2-2',
+                        title: '2. Integração do Bling com Marketplaces',
+                        objective: 'Conectar o Bling aos marketplaces para automatizar a sincronização de produtos, pedidos e estoque.',
+                        tasks: [
+                            'Adicionar integrações para cada marketplace (Mercado Livre, Amazon, Shopee, etc.).',
+                            'Obter e inserir credenciais de API de cada plataforma.',
+                            'Realizar o mapeamento de categorias de produtos.',
+                            'Realizar o mapeamento de formas de envio.',
+                            'Configurar regras de sincronização (pedidos, estoque, preços, rastreamento).'
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'contas-marketplaces',
+                title: 'III. Contas nos Marketplaces',
+                intro: 'Esta fase envolve preparar a presença do cliente nos canais de venda. Cada marketplace tem suas particularidades, e a configuração correta do perfil e da logística é um passo fundamental para construir uma boa reputação.',
+                sections: [
+                    {
+                        id: 's3-1',
+                        title: '1. Escolha dos Marketplaces',
+                        objective: 'Selecionar os canais de venda mais adequados para os produtos e público-alvo do cliente.',
+                        tasks: [
+                            'Analisar mercado, público-alvo e concorrência para definir os canais prioritários.'
+                        ]
+                    },
+                    {
+                        id: 's3-2',
+                        title: '2. Processo de Cadastro',
+                        objective: 'Registrar a empresa do cliente como vendedor nos marketplaces escolhidos.',
+                        tasks: [
+                            'Organizar e submeter a documentação necessária (CNPJ, Contrato Social, etc.).',
+                            'Preencher informações comerciais da loja (nome, logo, descrição).',
+                            'Configurar dados bancários para repasses.',
+                            'Ler e aceitar os termos e condições de cada plataforma.'
+                        ]
+                    },
+                    {
+                        id: 's3-3',
+                        title: '3. Configuração Específica do Marketplace',
+                        objective: 'Otimizar as configurações de cada marketplace para o cliente.',
+                        tasks: [
+                            'Preencher o perfil do vendedor (Seller Profile).',
+                            'Configurar opções de frete (FBM) e Fulfillment (FBA / Full).',
+                            'Definir e-mails para recebimento de notificações.',
+                            'Criar templates de mensagens para SAC, se disponível.',
+                            'Familiarizar-se com os critérios de reputação e ferramentas de atendimento.'
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'gestao-produtos',
+                title: 'IV. Criação e Gestão de Produtos',
+                intro: 'A qualidade do cadastro de produtos é a espinha dorsal das vendas online. Descrições ricas, imagens de alta qualidade e informações fiscais corretas são essenciais para a conversão e para a operação fiscal.',
+                sections: [
+                    {
+                        id: 's4-1',
+                        title: '1. Criação do Produto no Bling',
+                        objective: 'Cadastrar os produtos no Bling com todas as informações necessárias para vendas e emissão de NFe.',
+                        tasks: [
+                            'Cadastrar dados básicos (Nome, SKU, NCM, Preço).',
+                            'Escrever descrição rica e completa com palavras-chave para SEO.',
+                            'Cadastrar atributos e variações (tamanho, cor, etc.) com SKUs próprios.',
+                            'Fazer upload de imagens de alta qualidade (mín. 1000x1000px).',
+                            'Definir estoque inicial e dimensões da embalagem.',
+                            'Confirmar dados fiscais (com apoio de um contador).'
+                        ]
+                    },
+                    {
+                        id: 's4-2',
+                        title: '2. Exportação de Produtos para Marketplaces',
+                        objective: 'Publicar os produtos cadastrados no Bling nos marketplaces integrados.',
+                        tasks: [
+                            'Selecionar produtos e iniciar a exportação para o canal desejado via Bling.',
+                            'Revisar e ajustar mapeamento de campos.',
+                            'Resolver erros de sincronização indicados pelo Bling.',
+                            'Acompanhar o processo de publicação no painel do marketplace.'
+                        ]
+                    }
+                ]
+            },
+            {
+                id: 'otimizacao-continua',
+                title: 'V. Otimização e Gestão Contínua',
+                intro: 'O trabalho não termina após a publicação. A gestão contínua e a otimização são o que garantem o crescimento e a saúde da operação a longo prazo, adaptando-se às mudanças do mercado e ao comportamento do consumidor.',
+                sections: [
+                    {
+                        id: 's5-1',
+                        title: '1. Gestão de Pedidos e Notas Fiscais',
+                        objective: 'Processar vendas de forma eficiente e cumprir obrigações fiscais.',
+                        tasks: [
+                            'Monitorar a importação de pedidos no Bling.',
+                            'Configurar e executar a emissão de NFe.',
+                            'Organizar o processo de expedição dos produtos.'
+                        ]
+                    },
+                    {
+                        id: 's5-2',
+                        title: '2. Controle de Estoque Centralizado',
+                        objective: 'Manter o estoque preciso e atualizado em todos os canais de venda.',
+                        tasks: [
+                            'Registrar todas as movimentações de estoque no Bling.',
+                            'Acompanhar a sincronização automática para evitar quebras de estoque.'
+                        ]
+                    },
+                    {
+                        id: 's5-3',
+                        title: '3. Análise de Desempenho',
+                        objective: 'Monitorar o progresso e identificar oportunidades de melhoria.',
+                        tasks: [
+                            'Criar e analisar relatórios de vendas.',
+                            'Monitorar métricas chave (conversão, ticket médio, visitas, etc.).',
+                            'Acompanhar e gerir a reputação nos marketplaces.'
+                        ]
+                    },
+                    {
+                        id: 's5-4',
+                        title: '4. Gestão de Campanhas (ADS)',
+                        objective: 'Aumentar a visibilidade e vendas através de anúncios pagos.',
+                        tasks: [
+                            'Planejar e executar campanhas de anúncios nos marketplaces.',
+                            'Otimizar lances e criativos para maximizar o ROI.'
+                        ]
+                    },
+                    {
+                        id: 's5-5',
+                        title: '5. Atendimento ao Cliente Centralizado',
+                        objective: 'Garantir um atendimento de excelência para os compradores.',
+                        tasks: [
+                            'Centralizar e responder perguntas e mensagens.',
+                            'Desenvolver FAQ e templates de resposta.',
+                            'Monitorar a velocidade e qualidade do atendimento.'
+                        ]
+                    },
+                    {
+                        id: 's5-6',
+                        title: '6. Suporte e Otimização Contínua',
+                        objective: 'Oferecer suporte contínuo e buscar melhorias constantes.',
+                        tasks: [
+                            'Manter-se atualizado sobre novas funcionalidades das plataformas.',
+                            'Realizar reuniões periódicas de resultados com o cliente.',
+                            'Propor otimizações contínuas em produtos, anúncios e processos.'
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        const stepperEl = document.getElementById('stepper');
+        const contentAreaEl = document.getElementById('content-area');
+        const editorPasswordInput = document.getElementById('editor-password');
+        const loginButton = document.getElementById('login-button');
+        const editStatusSpan = document.getElementById('edit-status');
+
+        const SECRET_PASSWORD = "Helux123"; // <-- SUBSTITUA PELA SUA SENHA SECRETA
+        let isEditorMode = false;
+        let checklistState = {}; // Estado do checklist, será carregado do Firebase
+
+        loginButton.addEventListener('click', () => {
+            if (editorPasswordInput.value === SECRET_PASSWORD) {
+                isEditorMode = true;
+                editStatusSpan.textContent = 'Modo: Edição Ativo';
+                editStatusSpan.classList.remove('text-gray-500');
+                editStatusSpan.classList.add('text-teal-600');
+                editorPasswordInput.style.display = 'none';
+                loginButton.style.display = 'none';
+                renderAllContent(); // Redesenha para habilitar/desabilitar checkboxes
+            } else {
+                alert('Senha incorreta. Você está no modo de visualização.');
+                isEditorMode = false;
+                editStatusSpan.textContent = 'Modo: Visualização';
+                editStatusSpan.classList.remove('text-teal-600');
+                editStatusSpan.classList.add('text-gray-500');
+                renderAllContent(); // Redesenha para habilitar/desabilitar checkboxes
+            }
+        });
+
+        // Listener para mudanças no Firestore (em tempo real)
+        docRef.onSnapshot((doc) => {
+            if (doc.exists) {
+                checklistState = doc.data();
+                renderAllContent(); // Redesenha para refletir as mudanças do banco de dados
+                updateProcessChart();
+            } else {
+                console.log("Nenhum documento encontrado no Firestore, iniciando com checklist vazio.");
+                checklistState = {};
+                renderAllContent();
+            }
+        }, (error) => {
+            console.error("Erro ao carregar dados do Firestore:", error);
+            editStatusSpan.textContent = 'Erro ao carregar dados. Verifique o console.';
+            editStatusSpan.classList.remove('text-teal-600');
+            editStatusSpan.classList.add('text-red-500');
+            // Se houver erro de permissão, pode ser útil desativar o modo de edição por padrão
+            isEditorMode = false;
+        });
+
+        function saveStateToFirestore(taskId, isChecked) {
+            if (isEditorMode) {
+                checklistState[taskId] = isChecked;
+                docRef.set(checklistState)
+                    .then(() => {
+                        console.log("Estado salvo no Firestore!");
+                        updateProcessChart();
+                    })
+                    .catch((error) => {
+                        console.error("Erro ao salvar estado no Firestore:", error);
+                    });
+            } else {
+                console.log("Não é possível salvar: Modo de visualização.");
+            }
+        }
+
+        function renderStepper() {
+            stepperEl.innerHTML = '<h3 class="font-bold text-lg mb-4 text-slate-800">Fases do Processo</h3>';
+            processData.forEach((phase, index) => {
+                const stepItem = document.createElement('a');
+                stepItem.href = `#${phase.id}`;
+                stepItem.id = `step-${phase.id}`;
+                stepItem.className = 'step-item flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors duration-200 hover:bg-teal-100';
+                stepItem.innerHTML = `
+                    <div class="step-circle flex-shrink-0 w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold mr-4">${index + 1}</div>
+                    <span class="font-semibold">${phase.title}</span>
+                `;
+                stepItem.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.getElementById(`content-${phase.id}`).scrollIntoView({ behavior: 'smooth' });
+                });
+                stepperEl.appendChild(stepItem);
+            });
+        }
+        
+        function renderAllContent() {
+            contentAreaEl.innerHTML = '';
+            processData.forEach(phase => {
+                const phaseEl = document.createElement('div');
+                phaseEl.id = `content-${phase.id}`;
+                phaseEl.className = 'mb-12 scroll-mt-8';
+                
+                let sectionsHTML = phase.sections.map((section, sectionIndex) => {
+                    const tasksHTML = section.tasks.map((task, taskIndex) => {
+                        const taskId = `${section.id}-${taskIndex}`;
+                        const isChecked = checklistState[taskId] ? 'checked' : '';
+                        const isDisabled = isEditorMode ? '' : 'disabled';
+                        return `
+                            <div class="flex items-start my-2">
+                                <input type="checkbox" id="${taskId}" data-task-id="${taskId}" class="task-checkbox mt-1 h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500" ${isChecked} ${isDisabled}>
+                                <label for="${taskId}" class="ml-3 block text-sm text-slate-700 ${isChecked ? 'line-through text-gray-500' : ''}">${task}</label>
+                            </div>
+                        `;
+                    }).join('');
+
+                    return `
+                        <div class="mb-6 content-card bg-white p-6 rounded-2xl">
+                            <details class="group">
+                                <summary class="flex justify-between items-center font-semibold cursor-pointer text-slate-800">
+                                    <span>${section.title}</span>
+                                    <span class="transition group-open:rotate-180">
+                                        <svg fill="none" height="24" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" viewBox="0 0 24 24" width="24"><path d="M6 9l6 6 6-6"></path></svg>
+                                    </span>
+                                </summary>
+                                <div class="mt-4">
+                                    <p class="text-sm font-medium text-teal-700 bg-teal-50 p-3 rounded-lg"><strong>Objetivo:</strong> ${section.objective}</p>
+                                    <div class="mt-4 pl-2 border-l-2 border-slate-200">${tasksHTML}</div>
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }).join('');
+
+                phaseEl.innerHTML = `
+                    <h2 class="text-2xl md:text-3xl font-bold text-slate-900 mb-2">${phase.title}</h2>
+                    <p class="text-slate-600 mb-6">${phase.intro}</p>
+                    ${sectionsHTML}
+                `;
+                contentAreaEl.appendChild(phaseEl);
+            });
+            attachCheckboxListeners();
+        }
+        
+        function attachCheckboxListeners() {
+            document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    const taskId = e.target.dataset.taskId;
+                    saveStateToFirestore(taskId, e.target.checked);
+                });
+            });
+        }
+
+        function updateActiveStep() {
+            const sections = document.querySelectorAll('[id^="content-"]');
+            let currentActive = null;
+            
+            sections.forEach(section => {
+                const rect = section.getBoundingClientRect();
+                 if (rect.top <= 100 && rect.bottom >= 100) {
+                   currentActive = section.id.replace('content-', '');
+                }
+            });
+
+            document.querySelectorAll('.step-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            if(currentActive){
+                 const activeStepEl = document.getElementById(`step-${currentActive}`);
+                 if(activeStepEl) activeStepEl.classList.add('active');
+            } else {
+                const firstStep = document.querySelector('.step-item');
+                if (window.scrollY === 0 && firstStep) {
+                    firstStep.classList.add('active');
+                }
+            }
+        }
+        
+        function updateProcessChart() {
+            const completedTasksPerPhase = processData.map(phase => {
+                let completed = 0;
+                phase.sections.forEach(section => {
+                    section.tasks.forEach(task => {
+                        const taskId = `${section.id}-${task}`;
+                        if (checklistState[taskId]) {
+                            completed++;
+                        }
+                    });
+                });
+                return completed;
+            });
+
+            const totalTasksPerPhase = processData.map(phase => {
+                let total = 0;
+                phase.sections.forEach(section => {
+                    total += section.tasks.length;
+                });
+                return total;
+            });
+            
+            const completionPercentages = processData.map((phase, index) => {
+                const total = totalTasksPerPhase[index];
+                if (total === 0) return 0;
+                return (completedTasksPerPhase[index] / total) * 100;
+            });
+
+            chart.data.datasets[0].data = completionPercentages;
+            chart.update();
+        }
+
+
+        // Chart.js implementation
+        let chartInstance; // Variável para armazenar a instância do gráfico
+        const ctx = document.getElementById('processChart').getContext('2d');
+        
+        function initializeChart() {
+             if (chartInstance) {
+                chartInstance.destroy(); // Destrói a instância anterior se existir
+            }
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: processData.map(p => p.title.replace('I. ', '').replace('II. ', '').replace('III. ', '').replace('IV. ', '').replace('V. ', '')),
+                    datasets: [{
+                        label: '% Concluído',
+                        data: [], // Será preenchido por updateProcessChart
+                        backgroundColor: [
+                            'rgba(20, 184, 166, 0.6)',
+                            'rgba(13, 148, 136, 0.6)',
+                            'rgba(15, 118, 110, 0.6)',
+                            'rgba(19, 78, 74, 0.6)',
+                            'rgba(6, 78, 59, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(20, 184, 166, 1)',
+                            'rgba(13, 148, 136, 1)',
+                            'rgba(15, 118, 110, 1)',
+                            'rgba(19, 78, 74, 1)',
+                            'rgba(6, 78, 59, 1)'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 12 },
+                            padding: 12,
+                            cornerRadius: 8,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.x.toFixed(0) + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 100, // Max percentage is 100
+                            grid: {
+                                display: false,
+                                drawBorder: false,
+                            },
+                             ticks: {
+                                font: {
+                                    family: "'Inter', sans-serif"
+                                },
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                font: {
+                                    family: "'Inter', sans-serif",
+                                    size: 12
+                                }
+                            }
+                        }
+                    },
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const chartElement = elements[0];
+                            const index = chartElement.index;
+                            const phaseId = processData[index].id;
+                            document.getElementById(`content-${phaseId}`).scrollIntoView({ behavior: 'smooth' });
+                        }
+                    }
+                }
+            });
+            updateProcessChart(); // Inicializa o gráfico com os dados
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderStepper();
+            initializeChart(); // Inicializa o gráfico vazio e será preenchido pelos dados do Firestore
+            renderAllContent(); // Renderiza o conteúdo inicialmente, será atualizado pelo Firestore
+            updateActiveStep(); // Ativa o primeiro passo na rolagem inicial
+        });
+
+        window.addEventListener('scroll', updateActiveStep);
+    </script>
+</body>
+</html>
